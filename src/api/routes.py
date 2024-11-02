@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify, Blueprint
-from api.models import db, GuildMember
-
-from api.helpers import get_access_token  # Import the token helper function
-from functools import wraps
+from api.models import db, User, GuildMember
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import requests
 import logging
+from api.helpers import get_access_token  # Import the token helper function
 
 api = Blueprint('api', __name__)
 
@@ -13,20 +13,69 @@ api = Blueprint('api', __name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# API key-based authentication decorator
-def require_api_key(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        api_key = request.headers.get('X-API-KEY')
-        if api_key and api_key == os.environ.get('API_KEY'):
-            return f(*args, **kwargs)
-        else:
-            return jsonify({"error": "Unauthorized"}), 401
-    return decorated_function
+@api.route('/signup', methods=['POST'])
+def signup():
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+
+    # Check if the user already exists
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "User already exists"}), 400
+
+    # Determine if the first user is admin
+    is_admin = User.query.count() == 0  # First user becomes admin
+
+    # Create a new user and hash the password
+    new_user = User(email=email, is_admin=is_admin)
+    new_user.set_password(password)  # Use the set_password method to hash the password
+
+    # Add user to the database
+    db.session.add(new_user)
+    db.session.commit()
+
+    first_user_created = User.query.count() == 1  # Check if this is the first user
+    return jsonify({"message": "User created", "firstUserCreated": first_user_created}), 201
+
+
+@api.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+
+    # Find the user in the database
+    user = User.query.filter_by(email=email).first()
+
+    # Validate user credentials
+    if user and user.check_password(password):
+        # Generate JWT token with user identity
+        access_token = create_access_token(identity={"id": user.id, "is_admin": user.is_admin})
+        return jsonify({"access_token": access_token}), 200
+    else:
+        return jsonify({"error": "Invalid credentials"}), 401
+    
+
+@api.route('/check-users', methods=['GET'])
+def check_users():
+    try:
+        users_count = User.query.count()
+        return jsonify({"exists": users_count > 0}), 200
+    except Exception as e:
+        logger.error(f"Error checking users: {e}")
+        return jsonify({"error": "Failed to check users"}), 500
+
 
 @api.route('/get-guild-players', methods=['GET'])
-@require_api_key
+@jwt_required()
 def get_guild_players():
+    # Retrieve the JWT identity to get user information
+    current_user = get_jwt_identity()
+
+    # Check if the user has admin privileges
+    if not current_user.get("is_admin"):
+        return jsonify({"error": "Unauthorized access"}), 403
+
     realm_slug = os.environ.get('WOW_REALM_SLUG')
     guild_name = os.environ.get('WOW_GUILD_NAME')
 
@@ -34,7 +83,7 @@ def get_guild_players():
     logger.info("Accessing /get-guild-players endpoint")
 
     try:
-        # Retrieve the access token
+        # Retrieve the access token using the helper function
         access_token = get_access_token()
 
         # Make the guild roster API request
@@ -46,9 +95,11 @@ def get_guild_players():
             'namespace': 'profile-eu',
             'locale': 'en_US'
         }
-        
+
+        # Send the request to the Blizzard API
         roster_response = requests.get(guild_url, headers=headers, params=params)
-        
+
+        # Check if the response is successful
         if roster_response.status_code == 200:
             # Process the response to filter the required data
             data = roster_response.json()
@@ -56,7 +107,7 @@ def get_guild_players():
             faction = guild_info.get("faction", {}).get("name", "")
             guild_realm_name = guild_info.get("realm", {}).get("name", "")
             guild_realm_slug = guild_info.get("realm", {}).get("slug", "")
-            
+
             members = data.get("members", [])
             filtered_members = []
 
@@ -89,11 +140,13 @@ def get_guild_players():
                     )
                     db.session.add(new_member)
 
-            db.session.commit()  # Commit the changes to the database
+            # Commit the changes to the database
+            db.session.commit()
             return jsonify({"members": filtered_members}), 200
         else:
             return jsonify({"error": "Failed to fetch guild roster", "status_code": roster_response.status_code}), 500
-    
+
     except Exception as e:
+        # Log and return the error
         logger.error(f"An error occurred: {e}")
-        return jsonify({"error": get_access_token() }), 500
+        return jsonify({"error": "An error occurred while fetching data"}), 500
