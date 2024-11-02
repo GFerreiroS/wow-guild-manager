@@ -1,63 +1,52 @@
-from flask import Flask, request, jsonify, url_for, Blueprint
-from api.models import db, User, GuildMember  # Import the GuildMember model
-from api.utils import generate_sitemap, APIException
-from flask_cors import CORS
+from flask import Flask, request, jsonify, Blueprint
+from api.models import db, GuildMember
+
+from api.helpers import get_access_token  # Import the token helper function
+from functools import wraps
 import os
 import requests
+import logging
 
 api = Blueprint('api', __name__)
 
-# Allow CORS requests to this API
-CORS(api)
+# Configure basic logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-
-@api.route('/hello', methods=['POST', 'GET'])
-def handle_hello():
-    response_body = {
-        "message": "Hello! I'm a message that came from the backend, check the network tab on the google inspector and you will see the GET request"
-    }
-    return jsonify(response_body), 200
-
+# API key-based authentication decorator
+def require_api_key(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get('X-API-KEY')
+        if api_key and api_key == os.environ.get('API_KEY'):
+            return f(*args, **kwargs)
+        else:
+            return jsonify({"error": "Unauthorized"}), 401
+    return decorated_function
 
 @api.route('/get-guild-players', methods=['GET'])
+@require_api_key
 def get_guild_players():
-    client_id = os.environ.get('BNET_CLIENT_ID')
-    client_secret = os.environ.get('BNET_CLIENT_SECRET')
     realm_slug = os.environ.get('WOW_REALM_SLUG')
     guild_name = os.environ.get('WOW_GUILD_NAME')
-    
-    # Check if required environment variables are set
-    if not all([client_id, client_secret, realm_slug, guild_name]):
-        return jsonify({"error": "Missing environment variables"}), 400
 
-    # Step 1: Obtain the access token
-    try:
-        token_response = requests.post(
-            'https://oauth.battle.net/token',
-            auth=(client_id, client_secret),
-            data={'grant_type': 'client_credentials'}
-        )
-        
-        if token_response.status_code != 200:
-            return jsonify({"error": "Failed to fetch token", "status_code": token_response.status_code}), 500
-        
-        # Extract the access token from the response
-        access_token = token_response.json().get('access_token')
-    
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": "An error occurred while requesting the token", "details": str(e)}), 500
+    # Log the API request
+    logger.info("Accessing /get-guild-players endpoint")
 
-    # Step 2: Make the guild roster API request
-    guild_url = f"https://eu.api.blizzard.com/data/wow/guild/{realm_slug}/{guild_name}/roster"
-    headers = {
-        'Authorization': f"Bearer {access_token}"
-    }
-    params = {
-        'namespace': 'profile-eu',
-        'locale': 'en_US'
-    }
-    
     try:
+        # Retrieve the access token
+        access_token = get_access_token()
+
+        # Make the guild roster API request
+        guild_url = f"https://eu.api.blizzard.com/data/wow/guild/{realm_slug}/{guild_name}/roster"
+        headers = {
+            'Authorization': f"Bearer {access_token}"
+        }
+        params = {
+            'namespace': 'profile-eu',
+            'locale': 'en_US'
+        }
+        
         roster_response = requests.get(guild_url, headers=headers, params=params)
         
         if roster_response.status_code == 200:
@@ -103,8 +92,8 @@ def get_guild_players():
             db.session.commit()  # Commit the changes to the database
             return jsonify({"members": filtered_members}), 200
         else:
-            # Return an error if the guild roster API request fails
             return jsonify({"error": "Failed to fetch guild roster", "status_code": roster_response.status_code}), 500
     
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": "An error occurred while requesting guild roster", "details": str(e)}), 500
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        return jsonify({"error": get_access_token() }), 500
