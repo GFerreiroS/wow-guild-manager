@@ -1,21 +1,21 @@
-import React, { useContext, useEffect, useState } from "react"; // Import useStateimport { Context } from "../store/appContext";
+import React, { useContext, useEffect, useState } from "react";
+import { Context } from "../store/appContext";
 import rigoImageUrl from "../../img/rigo-baby.jpg";
-import Context from "../store/appContext";
 import "../../styles/home.css";
-import Signup from "../component/signup";
+import UserWizard from "../component/userWizard"; // Adjust the path if necessary
 
 export const Home = () => {
   const { store, actions } = useContext(Context);
-  const [showSignup, setShowSignup] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => {
-    const fetchUserExists = async () => {
+    const checkUserExists = async () => {
       await actions.checkUserExists(); // Check if users exist
       if (!store.userExists) {
-        setShowSignup(true); // Show signup modal if no users exist
+        setShowWizard(true); // Show wizard if no users exist
       }
     };
-    fetchUserExists();
+    checkUserExists();
   }, [actions, store.userExists]);
 
   return (
@@ -31,8 +31,8 @@ export const Home = () => {
         </a>
       </p>
 
-      {/* Signup Modal */}
-      {showSignup && <Signup onClose={() => setShowSignup(false)} />}
+      {/* Show Wizard if no users exist */}
+      {showWizard && <UserWizard onClose={() => setShowWizard(false)} />}
     </div>
   );
 };
