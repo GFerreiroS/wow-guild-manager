@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @api.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
+    username = data.get("username")
     email = data.get("email")
     password = data.get("password")
 
@@ -27,7 +28,7 @@ def signup():
     is_admin = User.query.count() == 0  # First user becomes admin
 
     # Create a new user and hash the password
-    new_user = User(email=email, is_admin=is_admin)
+    new_user = User(username=username, email=email, is_admin=is_admin)
     new_user.set_password(password)  # Use the set_password method to hash the password
 
     # Add user to the database

@@ -4,6 +4,7 @@ import { Context } from "../store/appContext"; // Ensure the context path is cor
 const userWizard = ({ onClose }) => {
   const { actions } = useContext(Context);
   const [step, setStep] = useState(1);
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -13,7 +14,7 @@ const userWizard = ({ onClose }) => {
 
   const handleSubmit = async () => {
     try {
-      const result = await actions.signup({ email, password });
+      const result = await actions.signup({ username, email, password });
       if (result) {
         onClose(); // Close the wizard on successful user creation
         window.location.reload(); // Reload to refresh app state
@@ -56,6 +57,16 @@ const userWizard = ({ onClose }) => {
             {step === 2 && (
               <div>
                 <h5>Enter Your Information</h5>
+                <div className="mb-3">
+                  <label className="form-label">Username</label>
+                  <input
+                    type="username"
+                    className="form-control"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                </div>
                 <div className="mb-3">
                   <label className="form-label">Email</label>
                   <input
