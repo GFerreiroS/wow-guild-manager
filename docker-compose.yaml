@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/front.dockerfile
+    volumes:
+      - .:/usr/src/app/
+      - /usr/src/app/node_modules
+    ports:
+      - "3000:3000"
+    command: npm run start
+  backend:
+    build:
+      context: .
+      dockerfile: docker/back.dockerfile
+    volumes:
+      - .:/usr/src/app/
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "rm -R -f ./migrations && pipenv run init && dropdb -h localhost -U postgres wow-guild-manager || true && createdb -h localhost -U postgres wow-guild-manager || true && psql -h localhost wow-guild-manager -U postgres -c 'CREATE EXTENSION unaccent;' || true && pipenv run migrate && pipenv run upgrade && pipenv run start"
+  postgres:
+    image: postgres:latest
+    container_name: wow-guild-manager
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "password"
+      POSTGRES_DB: "wow-guild-manager"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
