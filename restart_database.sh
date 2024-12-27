@@ -1,0 +1,1 @@
+rm -rf migrations && docker compose up -d --build

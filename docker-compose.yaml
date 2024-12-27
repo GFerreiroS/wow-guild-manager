@@ -20,7 +20,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -c "rm -R -f ./migrations && pipenv run init && dropdb -h localhost -U postgres wow-guild-manager || true && createdb -h localhost -U postgres wow-guild-manager || true && psql -h localhost wow-guild-manager -U postgres -c 'CREATE EXTENSION unaccent;' || true && pipenv run migrate && pipenv run upgrade && pipenv run start"
+    command: >
+      sh -c "
+      pipenv run init && 
+      PGPASSWORD="password" dropdb -h postgres -U postgres wow-guild-manager && 
+      PGPASSWORD="password" createdb -h postgres -U postgres wow-guild-manager && 
+      PGPASSWORD="password" psql -h postgres wow-guild-manager -U postgres -c 'CREATE EXTENSION unaccent;' && 
+      pipenv run migrate && 
+      pipenv run upgrade && 
+      pipenv run start"
   postgres:
     image: postgres:latest
     container_name: wow-guild-manager
