@@ -12,17 +12,38 @@ const userWizard = ({ onClose }) => {
   const handleNext = () => setStep(step + 1);
   const handlePrev = () => setStep(step - 1);
 
-  const handleSubmit = async () => {
-    try {
-      const result = await actions.signup({ username, email, password });
-      if (result) {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await handleSignupBase({
+      url: `${process.env.BACKEND_URL}/api/signup`,
+      requestBody: { username, email, password },
+      successCallback: () => {
         onClose(); // Close the wizard on successful user creation
         window.location.reload(); // Reload to refresh app state
+      },
+    });
+  };
+
+  // Shared function for signup logic
+  const handleSignupBase = async ({ url, requestBody, successCallback }) => {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        successCallback();
       } else {
-        setError("Failed to create user. Please try again.");
+        setError(`Signup failed: ${data.error}`);
       }
-    } catch (err) {
+    } catch (error) {
       setError("An error occurred. Please try again.");
+      console.error(error);
     }
   };
 
